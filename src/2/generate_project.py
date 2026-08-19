@@ -4,11 +4,11 @@ import sys
 import datetime
 
 def main():
-    # タイムスタンプ取得
     timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
     project_dir = f"sdl3-ttf-{timestamp}"
     
     os.makedirs(project_dir, exist_ok=True)
+    os.makedirs(os.path.join(project_dir, "build"), exist_ok=True)
     
     # 1. CMakeLists.txt
     cmakelists_content = """cmake_minimum_required(VERSION 3.25)
@@ -20,7 +20,6 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 include(FetchContent)
 
 set(DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
-set(SDLTTF_VENDORED ON CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
     SDL3
@@ -28,13 +27,15 @@ FetchContent_Declare(
     GIT_TAG release-3.4.14
 )
 
+set(SDLTTF_VENDORED ON CACHE BOOL "" FORCE)
+
 FetchContent_Declare(
-    SDL3_ttf
+    sdl3_ttf
     GIT_REPOSITORY https://github.com/libsdl-org/SDL_ttf.git
     GIT_TAG release-3.2.2
 )
 
-FetchContent_MakeAvailable(SDL3 SDL3_ttf)
+FetchContent_MakeAvailable(SDL3 sdl3_ttf)
 
 add_executable(sdl3_ime_demo main.c)
 target_link_libraries(sdl3_ime_demo PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf)
@@ -56,44 +57,41 @@ ninja -j2
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
 
-// 日本語の確定テキストとIME入力中（未確定）テキストの保持バッファ
 char confirmed_text[1024] = "日本語入力テスト: ";
 char composition_text[512] = "";
 
 int main(int argc, char* argv[]) {
-    // 1. SDL3 と SDL3_ttf の初期化
     if (!SDL_Init(SDL_INIT_VIDEO)) {
-        SDL_Log("SDL_Init Error: %s", SDL_GetError());
+        SDL_Log("SDL_Init Error: %s\\n", SDL_GetError());
         return 1;
     }
     if (!TTF_Init()) {
-        SDL_Log("TTF_Init Error: %s", SDL_GetError());
+        SDL_Log("TTF_Init Error: %s\\n", SDL_GetError());
         SDL_Quit();
         return 1;
     }
 
-    // 2. ウィンドウとレンダラーの作成
     SDL_Window* window = SDL_CreateWindow("SDL3 IME & Font Fallback Demo", WINDOW_WIDTH, WINDOW_HEIGHT, 0);
     if (!window) {
-        SDL_Log("Window Creation Error: %s", SDL_GetError());
+        SDL_Log("Window Creation Error: %s\\n", SDL_GetError());
         TTF_Quit();
         SDL_Quit();
         return 1;
     }
     SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
     if (!renderer) {
-        SDL_Log("Renderer Creation Error: %s", SDL_GetError());
+        SDL_Log("Renderer Creation Error: %s\\n", SDL_GetError());
         SDL_DestroyWindow(window);
         TTF_Quit();
         SDL_Quit();
         return 1;
     }
 
-    // 3. フォントのロードとフォールバック設定
     const char* main_font_path = "/home/pi/.fonts/UDEVGothicJPDOC-Regular.ttf";
     const char* fallback_font_path = "/home/pi/.fonts/UDEVGothicNF-Regular.ttf";
 
@@ -101,22 +99,17 @@ int main(int argc, char* argv[]) {
     TTF_Font* fallback_font = TTF_OpenFont(fallback_font_path, 24);
 
     if (!font) {
-        SDL_Log("Warning: Failed to load main font. trying fallback directly.");
+        SDL_Log("Warning: Failed to load main font. trying fallback directly.\\n");
         font = fallback_font;
         fallback_font = NULL;
     } else if (fallback_font) {
-        // SDL3_ttf の正しい仕様: 第一引数、第二引数ともに TTF_Font* を渡す
         if (!TTF_AddFallbackFont(font, fallback_font)) {
-            SDL_Log("Warning: Failed to add fallback font: %s", SDL_GetError());
+            SDL_Log("Warning: Failed to add fallback font: %s\\n", SDL_GetError());
         }
     }
 
-    // 描画エンジンに文字幅を正確に計算させる設定（HarfBuzzの有効化）
-    TTF_SetFontDirection(font, TTF_DIRECTION_LTR);
-    TTF_SetFontScript(font, "Jpan"); // 日本語・全角コンテキストを明示
-
     if (!font) {
-        SDL_Log("Error: Both fonts failed to load.");
+        SDL_Log("Error: Both fonts failed to load.\\n");
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
         TTF_Quit();
@@ -124,83 +117,106 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // 初期テキストの末尾に、フォールバックのNFアイコン（例として親指アップのNFアイコン UTF-8）をテスト付与
-    // メインフォントにこのコードが無ければ、自動的にNFフォントから描画されます
-    strcat(confirmed_text, " \xef\x8c\x82"); 
+    strcat(confirmed_text, " \\xef\\x8c\\x82"); 
 
-    // 4. IME入力を有効化
     SDL_StartTextInput(window);
 
     bool quit = false;
     SDL_Event event;
 
-    // メインループ
     while (!quit) {
-        // イベント処理
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) {
                 quit = true;
             }
-            // SDL3のIME入力中イベント
             else if (event.type == SDL_EVENT_TEXT_EDITING) {
-                // event.edit.text に未確定文字列が入る
                 if (event.edit.text) {
                     strncpy(composition_text, event.edit.text, sizeof(composition_text) - 1);
                 } else {
-                    composition_text[0] = '\0';
+                    composition_text[0] = '\\0';
                 }
-                printf("IME Editing (composition): %s (start: %d, len: %d)\n", 
+                printf("IME Editing (composition): %s (start: %d, len: %d)\\n", 
                        composition_text, event.edit.start, event.edit.length);
             }
-            // SDL3のIME確定入力イベント
             else if (event.type == SDL_EVENT_TEXT_INPUT) {
-                // 確定した文字を後ろに結合
                 if (event.text.text) {
                     strncat(confirmed_text, event.text.text, sizeof(confirmed_text) - strlen(confirmed_text) - 1);
                 }
-                // 確定したので入力中バッファはクリア
-                composition_text[0] = '\0';
-                printf("IME Input (confirmed): %s\n", event.text.text);
+                composition_text[0] = '\\0';
+                printf("IME Input (confirmed): %s\\n", event.text.text);
             }
         }
 
-        // 5. 描画処理
-        // 画面を黒でクリア
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 250);
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
-        // 表示用の一時フルテキストバッファを合成 (確定分 + 入力中分)
         char display_text[2048];
         snprintf(display_text, sizeof(display_text), "%s%s", confirmed_text, composition_text);
 
-        // SDL3_ttfによる文字列のレンダリング (Blendedモードで綺麗に描画)
-        SDL_Color text_color = {255, 255, 255, 255}; // 白色
-        SDL_Surface* surface = TTF_RenderText_Blended(font, display_text, 0, text_color);
-        
-        if (surface) {
-            // サーフェスからSDL3のテクスチャを作成
-            SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
-            if (texture) {
-                // 描画位置の設定
-                SDL_FRect dst_rect = {
-                    .x = 20.0f,
-                    .y = 20.0f,
-                    .w = (float)surface->w,
-                    .h = (float)surface->h
-                };
-                // SDL3の正しい描画関数 (旧 SDL_RenderCopy から変更)
-                SDL_RenderTexture(renderer, texture, NULL, &dst_rect);
-                SDL_DestroyTexture(texture);
+        SDL_Color text_color = {255, 255, 255, 255}; 
+        float current_x = 20.0f; 
+        float current_y = 20.0f; 
+
+        const float ZENKAKU_WIDTH = 24.0f; 
+
+        const char* p = display_text;
+        while (*p != '\\0') {
+            Uint32 ch = 0;
+            int len = 0;
+
+            unsigned char c = (unsigned char)*p;
+            if (c < 0x80) { ch = c; len = 1; }
+            else if ((c & 0xE0) == 0xC0) { ch = ((c & 0x1F) << 6) | (p[1] & 0x3F); len = 2; }
+            else if ((c & 0xF0) == 0xE0) { ch = ((c & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F); len = 3; }
+            else if ((c & 0xF8) == 0xF0) { ch = ((c & 0x07) << 18) | ((p[1] & 0x3F) << 12) | ((p[2] & 0x3F) << 6) | (p[3] & 0x3F); len = 4; }
+            else { len = 1; p++; continue; } 
+
+            bool is_icon = (ch >= 0xE000 && ch <= 0xF8FF);
+
+            SDL_Surface* glyph_surf = TTF_RenderGlyph_Blended(font, ch, text_color);
+            if (glyph_surf) {
+                SDL_Texture* glyph_tex = SDL_CreateTextureFromSurface(renderer, glyph_surf);
+                if (glyph_tex) {
+                    float target_w = (float)glyph_surf->w;
+                    float target_h = (float)glyph_surf->h;
+                    float render_x = current_x;
+
+                    if (is_icon) {
+                        float offset_x = (ZENKAKU_WIDTH - target_w) / 2.0f;
+                        render_x += offset_x;
+                    }
+
+                    SDL_FRect dst_rect = {
+                        .x = render_x,
+                        .y = current_y,
+                        .w = target_w,
+                        .h = target_h
+                    };
+
+                    SDL_RenderTexture(renderer, glyph_tex, NULL, &dst_rect);
+                    SDL_DestroyTexture(glyph_tex);
+                }
+                SDL_DestroySurface(glyph_surf);
             }
-            SDL_DestroySurface(surface);
+
+            if (is_icon) {
+                current_x += ZENKAKU_WIDTH;
+            } else {
+                int advance = 0;
+                if (TTF_GetGlyphMetrics(font, ch, NULL, NULL, NULL, NULL, &advance)) {
+                    current_x += (float)advance;
+                } else {
+                    current_x += ZENKAKU_WIDTH / 2.0f; 
+                }
+            }
+
+            p += len; 
         }
 
-        // 画面の更新
         SDL_RenderPresent(renderer);
-        SDL_Delay(16); // 約60FPSを維持
+        SDL_Delay(16);
     }
 
-    // 6. クリーンアップ
     SDL_StopTextInput(window);
     if (font) TTF_CloseFont(font);
     if (fallback_font) TTF_CloseFont(fallback_font);
@@ -212,7 +228,6 @@ int main(int argc, char* argv[]) {
 }
 """
 
-    # Write files
     with open(os.path.join(project_dir, "CMakeLists.txt"), "w") as f:
         f.write(cmakelists_content)
         
@@ -223,7 +238,7 @@ int main(int argc, char* argv[]) {
     with open(os.path.join(project_dir, "main.c"), "w") as f:
         f.write(main_c_content)
         
-    print(f"Project structure successfully created in: {project_dir}")
+    print(f"Project structure successfully created in directory: {project_dir}")
 
 if __name__ == "__main__":
     main()
